@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Дуэль контроллері
+ * Дуэльдерді жасау, басқару және аяқтау функциясын ұсынады
+ */
 @RestController
 @RequestMapping("/api/duels")
 public class DuelController {

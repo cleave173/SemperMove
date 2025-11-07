@@ -1,3 +1,5 @@
+/// Дуэль моделі
+/// Екі қолданушы арасындағы бәсекелестікті сипаттайды
 class Duel {
   final int id;
   final DuelUser challenger;
@@ -116,5 +118,6 @@ class TotalScores {
     );
   }
 }
+
 
 

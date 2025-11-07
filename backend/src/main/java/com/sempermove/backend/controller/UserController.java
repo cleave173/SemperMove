@@ -12,6 +12,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Қолданушы контроллері
+ * Тіркеу, кіру және қолданушылар тізімін басқарады
+ */
 @RestController
 @RequestMapping("/api/users")
 public class UserController {

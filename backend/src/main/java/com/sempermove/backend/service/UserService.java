@@ -9,6 +9,11 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Қолданушы сервисі
+ * Қолданушыларды басқару бизнес логикасы
+ * Тіркеу, кіру, валидация функцияларын ұсынады
+ */
 @Service
 public class UserService {
 

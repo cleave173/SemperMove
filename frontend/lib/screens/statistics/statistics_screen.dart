@@ -208,12 +208,42 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 child: Icon(icon, color: const Color(0xFF00FF88), size: 20),
               ),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _selectedPeriod == 'week' ? 'Последние 7 дней' : 'Последние 30 дней',
+                      style: const TextStyle(
+                        color: Color(0xFF888888),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00FF88).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${data.length} дней',
+                  style: const TextStyle(
+                    color: Color(0xFF00FF88),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -258,20 +288,37 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 30,
-                        interval: 1,
+                        interval: _selectedPeriod == 'week' ? 1 : 5, // Неделя: каждый день, Месяц: каждые 5 дней
                         getTitlesWidget: (value, meta) {
                           if (value.toInt() >= 0 && value.toInt() < data.length) {
                             final date = data[value.toInt()].date;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                '${date.day}/${date.month}',
-                                style: const TextStyle(
-                                  color: Color(0xFF888888),
-                                  fontSize: 10,
+                            // Для недели показываем день недели, для месяца - число
+                            if (_selectedPeriod == 'week') {
+                              final weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+                              final weekdayIndex = date.weekday - 1;
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  weekdays[weekdayIndex],
+                                  style: const TextStyle(
+                                    color: Color(0xFF888888),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            } else {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  '${date.day}.${date.month}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF888888),
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              );
+                            }
                           }
                           return const Text('');
                         },
@@ -342,5 +389,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     return maxValue * 1.2; // добавляем 20% сверху для красоты
   }
 }
+
 
 

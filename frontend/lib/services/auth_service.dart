@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 
+/// Аутентификация сервисі
+/// JWT токен және қолданушы деректерін локалды сақтау
 class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _userIdKey = 'user_id';
@@ -55,5 +57,6 @@ class AuthService {
     await prefs.remove(_usernameKey);
   }
 }
+
 
 

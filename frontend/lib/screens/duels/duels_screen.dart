@@ -369,3 +369,4 @@ class _DuelsScreenState extends State<DuelsScreen> with SingleTickerProviderStat
 }
 
 
+

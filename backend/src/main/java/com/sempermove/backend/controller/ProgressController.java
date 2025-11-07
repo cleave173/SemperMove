@@ -1,14 +1,17 @@
 package com.sempermove.backend.controller;
 
 import com.sempermove.backend.model.Duel;
+import com.sempermove.backend.model.ProgressHistory;
 import com.sempermove.backend.model.User;
 import com.sempermove.backend.repository.DuelRepository;
+import com.sempermove.backend.repository.ProgressHistoryRepository;
 import com.sempermove.backend.repository.UserRepository;
 import com.sempermove.backend.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +24,9 @@ public class ProgressController {
 
     @Autowired
     private DuelRepository duelRepository;
+    
+    @Autowired
+    private ProgressHistoryRepository progressHistoryRepository;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -89,6 +95,9 @@ public class ProgressController {
 
         // Автоматическая синхронизация активных дуэлей
         syncActiveDuels(user);
+        
+        // Автоматическое сохранение в историю (для графиков статистики)
+        saveToHistory(user);
 
         return ResponseEntity.ok(user);
     }
@@ -127,6 +136,39 @@ public class ProgressController {
 
                 duelRepository.save(duel);
             }
+        }
+    }
+    
+    // Автоматическое сохранение прогресса в историю для статистики
+    private void saveToHistory(User user) {
+        LocalDate today = LocalDate.now();
+        
+        // Проверяем, есть ли уже запись на сегодня
+        List<ProgressHistory> todayHistory = progressHistoryRepository.findByUserId(user.getId())
+            .stream()
+            .filter(h -> h.getDate().equals(today))
+            .toList();
+        
+        if (todayHistory.isEmpty()) {
+            // Создаем новую запись на сегодня
+            ProgressHistory history = new ProgressHistory(
+                user.getId(),
+                user.getDailySteps(),
+                user.getPushUps(),
+                user.getSquats(),
+                user.getPlankSeconds(),
+                user.getWaterMl()
+            );
+            progressHistoryRepository.save(history);
+        } else {
+            // Обновляем существующую запись
+            ProgressHistory history = todayHistory.get(0);
+            history.setSteps(user.getDailySteps());
+            history.setPushUps(user.getPushUps());
+            history.setSquats(user.getSquats());
+            history.setPlankSeconds(user.getPlankSeconds());
+            history.setWaterMl(user.getWaterMl());
+            progressHistoryRepository.save(history);
         }
     }
 }

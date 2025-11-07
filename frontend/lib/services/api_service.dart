@@ -5,6 +5,8 @@ import '../models/duel.dart';
 import '../models/progress_history.dart';
 import 'auth_service.dart';
 
+/// API сервис
+/// Backend-пен байланысу үшін барлық HTTP сұраулар
 class ApiService {
   // ВАЖНО: Замените на ваш реальный IP адрес или домен
   static const String baseUrl = 'http://localhost:8080/api'; // для Chrome/iOS

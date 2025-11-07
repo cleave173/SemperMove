@@ -5,6 +5,10 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Дуэль моделі
+ * Екі қолданушы арасындағы бәсекелестікті басқарады
+ */
 @Entity
 @Table(name = "duels")
 public class Duel {
