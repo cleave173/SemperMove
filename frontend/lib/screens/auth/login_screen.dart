@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
-import '../../services/auth_service.dart';
-import '../../models/user.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../providers/user_provider.dart';
+import '../../services/supabase_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../home/main_screen.dart';
 import 'register_screen.dart';
 
@@ -13,12 +15,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _apiService = ApiService();
-  final _authService = AuthService();
-  
+  final _supabaseService = SupabaseService();
+  final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -28,26 +28,30 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final result = await _apiService.login(
+      await _supabaseService.signIn(
         _emailController.text.trim(),
         _passwordController.text,
       );
 
-      final token = result['token'];
-      final user = result['user'] as User;
-
-      await _authService.saveAuthData(token, user);
-
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-        );
+        // Load user data before navigation
+        await context.read<UserProvider>().loadUser();
+        
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const MainScreen()),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
+        String message = e.toString().replaceAll('Exception: ', '');
+        if (e is AuthException && e.code == 'invalid_credentials') {
+          message = '$message\n(Check your email / Проверьте почту)';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
+            content: Text(message),
             backgroundColor: Colors.red,
           ),
         );
@@ -59,8 +63,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F5);
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+    final textColor = isDark ? Colors.white : const Color(0xFF333333);
+    final hintColor = const Color(0xFF888888);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: bgColor,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -71,168 +85,113 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Лого
-                  const Icon(
-                    Icons.fitness_center,
-                    size: 80,
-                    color: Color(0xFF00FF88),
-                  ),
+                  Icon(Icons.fitness_center, size: 80, color: accentColor),
                   const SizedBox(height: 16),
-                  
-                  // Название
-                  const Text(
+                  Text(
                     'SEMPER MOVE',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 2,
+                      fontSize: 32, fontWeight: FontWeight.bold,
+                      color: textColor, letterSpacing: 2,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Двигайся к победе',
+                  Text(
+                    loc.moveToVictory,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF00FF88),
-                      letterSpacing: 1,
-                    ),
+                    style: TextStyle(fontSize: 16, color: accentColor, letterSpacing: 1),
                   ),
                   const SizedBox(height: 48),
 
-                  // Email поле
                   TextFormField(
                     controller: _emailController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      labelText: 'Email',
-                      labelStyle: const TextStyle(color: Color(0xFF888888)),
-                      prefixIcon: const Icon(Icons.email, color: Color(0xFF00FF88)),
-                      filled: true,
-                      fillColor: const Color(0xFF1A1A1A),
+                      labelText: loc.translate('email'),
+                      labelStyle: TextStyle(color: hintColor),
+                      prefixIcon: Icon(Icons.email, color: accentColor),
+                      filled: true, fillColor: cardColor,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: accentColor, width: 2),
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF00FF88), width: 2),
-                      ),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Введите email';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Введите корректный email';
-                      }
+                      if (value == null || value.isEmpty) return loc.translate('enter_email');
+                      if (!value.contains('@')) return loc.translate('enter_valid_email');
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  // Пароль поле
                   TextFormField(
                     controller: _passwordController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: textColor),
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
-                      labelText: 'Пароль',
-                      labelStyle: const TextStyle(color: Color(0xFF888888)),
-                      prefixIcon: const Icon(Icons.lock, color: Color(0xFF00FF88)),
+                      labelText: loc.translate('password'),
+                      labelStyle: TextStyle(color: hintColor),
+                      prefixIcon: Icon(Icons.lock, color: accentColor),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                          color: const Color(0xFF888888),
+                          color: hintColor,
                         ),
                         onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                       ),
-                      filled: true,
-                      fillColor: const Color(0xFF1A1A1A),
+                      filled: true, fillColor: cardColor,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: accentColor, width: 2),
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF00FF88), width: 2),
-                      ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Введите пароль';
-                      }
+                      if (value == null || value.isEmpty) return loc.translate('enter_password');
                       return null;
                     },
                   ),
                   const SizedBox(height: 32),
 
-                  // Кнопка входа
                   SizedBox(
                     height: 56,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _login,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00FF88),
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
                       child: _isLoading
                           ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.black,
-                                strokeWidth: 2,
-                              ),
+                              height: 24, width: 24,
+                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                             )
-                          : const Text(
-                              'ВОЙТИ',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
-                              ),
-                            ),
+                          : Text(loc.login, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // Регистрация
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text(
-                        'Нет аккаунта?',
-                        style: TextStyle(color: Color(0xFF888888)),
-                      ),
+                      Text(loc.translate('no_account'), style: TextStyle(color: hintColor)),
                       TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                          );
-                        },
-                        child: const Text(
-                          'Зарегистрироваться',
-                          style: TextStyle(
-                            color: Color(0xFF00FF88),
-                            fontWeight: FontWeight.bold,
-                          ),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
                         ),
+                        child: Text(loc.register, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
@@ -252,6 +211,3 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 }
-
-
-

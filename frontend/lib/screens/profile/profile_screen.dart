@@ -1,8 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
-import '../../services/auth_service.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/supabase_service.dart';
+import 'package:provider/provider.dart';
+import '../../providers/theme_provider.dart';
+import '../../providers/locale_provider.dart';
+import '../../providers/user_provider.dart';
 import '../../models/user.dart';
-import '../../models/duel.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/app_localizations.dart';
+import '../settings/settings_screen.dart';
 import '../auth/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -13,360 +20,201 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _apiService = ApiService();
-  final _authService = AuthService();
-  
+  final _supabaseService = SupabaseService();
   User? _user;
-  List<Duel> _duels = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadProfile();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
-      final user = await _apiService.getMyProgress();
-      final duels = await _apiService.getDuelHistory();
-      setState(() {
-        _user = user;
-        _duels = duels;
-        _isLoading = false;
-      });
+      final user = await _supabaseService.getProfile();
+      setState(() { _user = user; _isLoading = false; });
     } catch (e) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pickAvatar() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 512, maxHeight: 512);
+    if (picked == null) return;
+
+    try {
+      final url = await _supabaseService.uploadAvatar(File(picked.path));
+      setState(() { _user = _user?.copyWith(avatarUrl: url); });
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
+
+
   Future<void> _logout() async {
+    final loc = AppLocalizations.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Выйти из аккаунта?',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Вы уверены, что хотите выйти?',
-          style: TextStyle(color: Color(0xFF888888)),
-        ),
+        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        title: Text(loc.translate('logout'), style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+        content: Text(loc.translate('logout_confirm'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Color(0xFF888888))),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(loc.cancel, style: const TextStyle(color: Color(0xFF888888)))),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Выйти', style: TextStyle(color: Colors.red)),
+            child: Text(loc.translate('exit'), style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      await _authService.logout();
+      await _supabaseService.signOut();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
+          MaterialPageRoute(builder: (_) => LoginScreen()),
+          (_) => false,
         );
       }
     }
   }
 
-  int get _totalWins {
-    if (_user == null) return 0;
-    return _duels.where((d) => d.winner == _user!.username).length;
-  }
-
-  int get _totalDuels => _duels.length;
-
-  double get _winRate {
-    if (_totalDuels == 0) return 0;
-    return (_totalWins / _totalDuels) * 100;
-  }
-
-  int get _level {
-    if (_user == null) return 1;
-    final totalActivity = _user!.pushUps + _user!.squats + (_user!.plankSeconds ~/ 10);
-    return (totalActivity / 100).floor() + 1;
-  }
-
-  int get _currentLevelXP {
-    if (_user == null) return 0;
-    final totalActivity = _user!.pushUps + _user!.squats + (_user!.plankSeconds ~/ 10);
-    return totalActivity % 100;
-  }
-
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+    final textColor = isDark ? Colors.white : const Color(0xFF333333);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'ПРОФИЛЬ',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
+        backgroundColor: Colors.transparent, elevation: 0,
+        title: Text(loc.translate('profile_title'), style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1)),
         actions: [
+          IconButton(icon: const Icon(Icons.logout, color: Colors.redAccent), onPressed: _logout),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            onPressed: _logout,
+            icon: Icon(Icons.settings, color: textColor),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
           ),
+          IconButton(icon: Icon(Icons.refresh, color: textColor), onPressed: _loadProfile),
         ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00FF88)),
-            )
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : RefreshIndicator(
-              color: const Color(0xFF00FF88),
-              backgroundColor: const Color(0xFF1A1A1A),
-              onRefresh: _loadData,
+              color: accentColor,
+              onRefresh: _loadProfile,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // Профиль карточка
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF2A2A2A)),
-                      ),
-                      child: Column(
+                    // Avatar
+                    GestureDetector(
+                      onTap: _pickAvatar,
+                      child: Stack(
                         children: [
-                          // Аватар
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFF00FF88).withOpacity(0.2),
-                              border: Border.all(
-                                color: const Color(0xFF00FF88),
-                                width: 3,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.person,
-                              size: 50,
-                              color: Color(0xFF00FF88),
-                            ),
+                          CircleAvatar(
+                            radius: 55,
+                            backgroundColor: accentColor.withOpacity(0.2),
+                            backgroundImage: _user?.avatarUrl != null
+                                ? NetworkImage(_user!.avatarUrl!)
+                                : null,
+                            child: _user?.avatarUrl == null
+                                ? Icon(Icons.person, size: 55, color: accentColor)
+                                : null,
                           ),
-                          const SizedBox(height: 16),
-                          
-                          // Имя пользователя
-                          Text(
-                            _user?.username ?? '',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _user?.email ?? '',
-                            style: const TextStyle(
-                              color: Color(0xFF888888),
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Уровень
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF00FF88).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFF00FF88)),
-                            ),
-                            child: Text(
-                              'УРОВЕНЬ $_level',
-                              style: const TextStyle(
-                                color: Color(0xFF00FF88),
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
+                          Positioned(
+                            bottom: 0, right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: accentColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: isDark ? const Color(0xFF0A0A0A) : Colors.white, width: 3),
                               ),
+                              child: const Icon(Icons.camera_alt, size: 16, color: Colors.black),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          
-                          // Прогресс уровня
-                          Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '$_currentLevelXP / 100 XP',
-                                    style: const TextStyle(
-                                      color: Color(0xFF888888),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${(_currentLevelXP / 100 * 100).toInt()}%',
-                                    style: const TextStyle(
-                                      color: Color(0xFF00FF88),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: _currentLevelXP / 100,
-                                  backgroundColor: const Color(0xFF2A2A2A),
-                                  valueColor: const AlwaysStoppedAnimation<Color>(
-                                    Color(0xFF00FF88),
-                                  ),
-                                  minHeight: 8,
-                                ),
-                              ),
-                            ],
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Статистика дуэлей
+                    Text(_user?.username ?? '', style: TextStyle(color: textColor, fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(_user?.email ?? '', style: const TextStyle(color: Color(0xFF888888), fontSize: 14)),
+                    const SizedBox(height: 8),
+                    // Streak
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                        color: Colors.orangeAccent.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'Статистика дуэлей',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildStatCard(
-                                  'Всего дуэлей',
-                                  _totalDuels.toString(),
-                                  Icons.sports_kabaddi,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildStatCard(
-                                  'Побед',
-                                  _totalWins.toString(),
-                                  Icons.emoji_events,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _buildStatCard(
-                            'Процент побед',
-                            '${_winRate.toStringAsFixed(1)}%',
-                            Icons.trending_up,
+                          const Text('🔥', style: TextStyle(fontSize: 16)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_user?.currentStreak ?? 0} ${loc.days} ${loc.streak.toLowerCase()}',
+                            style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
 
-                    // Достижения
+                    // Stats cards
+                    _buildStatCard(loc.translate('steps'), '${_user?.dailySteps ?? 0}', Icons.directions_walk, accentColor, cardColor, borderColor, textColor),
+                    const SizedBox(height: 8),
+                    _buildStatCard(loc.translate('push_ups'), '${_user?.pushUps ?? 0} ${loc.translate('times')}', Icons.accessibility_new, accentColor, cardColor, borderColor, textColor),
+                    const SizedBox(height: 8),
+                    _buildStatCard(loc.translate('squats'), '${_user?.squats ?? 0} ${loc.translate('times')}', Icons.fitness_center, accentColor, cardColor, borderColor, textColor),
+                    const SizedBox(height: 8),
+                    _buildStatCard(loc.translate('plank'), '${_user?.plankSeconds ?? 0} ${loc.translate('sec')}', Icons.timer, accentColor, cardColor, borderColor, textColor),
+                    const SizedBox(height: 8),
+                    _buildStatCard(loc.translate('water'), '${_user?.waterMl ?? 0} ${loc.translate('ml')}', Icons.water_drop, accentColor, cardColor, borderColor, textColor),
+                    
+                    const SizedBox(height: 24),
+
+
+                    const SizedBox(height: 24),
+                    // Achievements
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: cardColor,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                        border: Border.all(color: borderColor),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Достижения',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
+                          Text(loc.translate('achievements'), style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 12),
                           Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
+                            spacing: 8, runSpacing: 8,
                             children: [
-                              _buildAchievementBadge(
-                                'Новичок',
-                                'Первая дуэль',
-                                Icons.star,
-                                isUnlocked: _totalDuels > 0,
-                              ),
-                              _buildAchievementBadge(
-                                'Боец',
-                                '10 дуэлей',
-                                Icons.local_fire_department,
-                                isUnlocked: _totalDuels >= 10,
-                              ),
-                              _buildAchievementBadge(
-                                'Чемпион',
-                                '5 побед',
-                                Icons.emoji_events,
-                                isUnlocked: _totalWins >= 5,
-                              ),
-                              _buildAchievementBadge(
-                                'Мастер',
-                                '100 отжиманий',
-                                Icons.fitness_center,
-                                isUnlocked: (_user?.pushUps ?? 0) >= 100,
-                              ),
-                              _buildAchievementBadge(
-                                'Атлет',
-                                '100 приседаний',
-                                Icons.accessibility_new,
-                                isUnlocked: (_user?.squats ?? 0) >= 100,
-                              ),
-                              _buildAchievementBadge(
-                                'Железный',
-                                '5 мин планки',
-                                Icons.timer,
-                                isUnlocked: (_user?.plankSeconds ?? 0) >= 300,
-                              ),
+                              _badge(loc.translate('master'), loc.translate('hundred_pushups'), Icons.fitness_center, isUnlocked: (_user?.pushUps ?? 0) >= 100, accentColor: accentColor, isDark: isDark),
+                              _badge(loc.translate('athlete'), loc.translate('hundred_squats'), Icons.accessibility_new, isUnlocked: (_user?.squats ?? 0) >= 100, accentColor: accentColor, isDark: isDark),
+                              _badge(loc.translate('iron'), loc.translate('five_min_plank'), Icons.timer, isUnlocked: (_user?.plankSeconds ?? 0) >= 300, accentColor: accentColor, isDark: isDark),
                             ],
                           ),
                         ],
@@ -379,84 +227,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color accent, Color card, Color border, Color text) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A0A0A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
-      ),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
+      child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF00FF88), size: 24),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Color(0xFF00FF88),
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 12,
-            ),
-          ),
+          Icon(icon, color: accent, size: 24),
+          const SizedBox(width: 12),
+          Text(title, style: TextStyle(color: text, fontSize: 15)),
+          const Spacer(),
+          Text(value, style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _buildAchievementBadge(String title, String description, IconData icon, {required bool isUnlocked}) {
+  Widget _badge(String title, String desc, IconData icon, {required bool isUnlocked, required Color accentColor, required bool isDark}) {
     return Container(
-      width: 100,
-      padding: const EdgeInsets.all(12),
+      width: 100, padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isUnlocked 
-            ? const Color(0xFF00FF88).withOpacity(0.1)
-            : const Color(0xFF0A0A0A),
+        color: isUnlocked ? accentColor.withOpacity(0.1) : (isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F5)),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isUnlocked ? const Color(0xFF00FF88) : const Color(0xFF2A2A2A),
-        ),
+        border: Border.all(color: isUnlocked ? accentColor : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0))),
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: isUnlocked ? const Color(0xFF00FF88) : const Color(0xFF444444),
-            size: 32,
-          ),
+          Icon(icon, color: isUnlocked ? accentColor : const Color(0xFF444444), size: 32),
           const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isUnlocked ? const Color(0xFF00FF88) : const Color(0xFF444444),
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, textAlign: TextAlign.center, style: TextStyle(color: isUnlocked ? accentColor : const Color(0xFF444444), fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(
-            description,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isUnlocked ? const Color(0xFF888888) : const Color(0xFF444444),
-              fontSize: 10,
-            ),
-          ),
+          Text(desc, textAlign: TextAlign.center, style: TextStyle(color: isUnlocked ? const Color(0xFF888888) : const Color(0xFF444444), fontSize: 10)),
         ],
       ),
     );
   }
 }
-
-
-

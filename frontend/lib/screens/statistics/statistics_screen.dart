@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../services/api_service.dart';
+import '../../services/supabase_service.dart';
 import '../../models/progress_history.dart';
+import '../../l10n/app_localizations.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -11,10 +12,10 @@ class StatisticsScreen extends StatefulWidget {
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
-  final _apiService = ApiService();
+  final _supabaseService = SupabaseService();
   List<ProgressHistory> _history = [];
   bool _isLoading = true;
-  String _selectedPeriod = 'week'; // week, month
+  String _selectedPeriod = 'week';
 
   @override
   void initState() {
@@ -25,19 +26,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
     try {
-      final history = await _apiService.getProgressHistory();
-      setState(() {
-        _history = history;
-        _isLoading = false;
-      });
+      final history = await _supabaseService.getProgressHistory();
+      setState(() { _history = history; _isLoading = false; });
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('${AppLocalizations.of(context).translate('load_error')}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -45,47 +40,30 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   List<ProgressHistory> _getFilteredHistory() {
     if (_history.isEmpty) return [];
-    
     final now = DateTime.now();
-    final daysToShow = _selectedPeriod == 'week' ? 7 : 30;
-    final cutoffDate = now.subtract(Duration(days: daysToShow));
-    
-    return _history
-        .where((h) => h.date.isAfter(cutoffDate))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final days = _selectedPeriod == 'week' ? 7 : 30;
+    final cutoff = now.subtract(Duration(days: days));
+    return _history.where((h) => h.date.isAfter(cutoff)).toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF333333);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'СТАТИСТИКА',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _loadHistory,
-          ),
-        ],
+        backgroundColor: Colors.transparent, elevation: 0,
+        title: Text(loc.translate('statistics_title'), style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        actions: [IconButton(icon: Icon(Icons.refresh, color: textColor), onPressed: _loadHistory)],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00FF88)),
-            )
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : RefreshIndicator(
-              color: const Color(0xFF00FF88),
-              backgroundColor: const Color(0xFF1A1A1A),
+              color: accentColor,
               onRefresh: _loadHistory,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -93,44 +71,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Переключатель периода
-                    _buildPeriodSelector(),
+                    _buildPeriodSelector(loc, accentColor, isDark, textColor),
                     const SizedBox(height: 24),
-
-                    // График шагов
-                    _buildChartCard(
-                      title: 'Шаги',
-                      icon: Icons.directions_walk,
-                      data: _getFilteredHistory(),
-                      getValue: (h) => h.steps.toDouble(),
-                    ),
+                    _buildChartCard(loc.translate('steps'), Icons.directions_walk, _getFilteredHistory(), (h) => h.steps.toDouble(), loc, accentColor, isDark, textColor),
                     const SizedBox(height: 16),
-
-                    // График отжиманий
-                    _buildChartCard(
-                      title: 'Отжимания',
-                      icon: Icons.accessibility_new,
-                      data: _getFilteredHistory(),
-                      getValue: (h) => h.pushUps.toDouble(),
-                    ),
+                    _buildChartCard(loc.translate('push_ups'), Icons.accessibility_new, _getFilteredHistory(), (h) => h.pushUps.toDouble(), loc, accentColor, isDark, textColor),
                     const SizedBox(height: 16),
-
-                    // График приседаний
-                    _buildChartCard(
-                      title: 'Приседания',
-                      icon: Icons.fitness_center,
-                      data: _getFilteredHistory(),
-                      getValue: (h) => h.squats.toDouble(),
-                    ),
+                    _buildChartCard(loc.translate('squats'), Icons.fitness_center, _getFilteredHistory(), (h) => h.squats.toDouble(), loc, accentColor, isDark, textColor),
                     const SizedBox(height: 16),
-
-                    // График планки
-                    _buildChartCard(
-                      title: 'Планка (сек)',
-                      icon: Icons.timer,
-                      data: _getFilteredHistory(),
-                      getValue: (h) => h.plankSeconds.toDouble(),
-                    ),
+                    _buildChartCard(loc.translate('plank_sec'), Icons.timer, _getFilteredHistory(), (h) => h.plankSeconds.toDouble(), loc, accentColor, isDark, textColor),
                   ],
                 ),
               ),
@@ -138,61 +87,39 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildPeriodSelector() {
+  Widget _buildPeriodSelector(AppLocalizations loc, Color accent, bool isDark, Color text) {
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
-      ),
+      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: borderColor)),
       child: Row(
         children: [
-          Expanded(
-            child: _buildPeriodButton('Неделя', 'week'),
-          ),
-          Expanded(
-            child: _buildPeriodButton('Месяц', 'month'),
-          ),
+          Expanded(child: _periodButton(loc.translate('week'), 'week', accent, text)),
+          Expanded(child: _periodButton(loc.translate('month'), 'month', accent, text)),
         ],
       ),
     );
   }
 
-  Widget _buildPeriodButton(String label, String period) {
+  Widget _periodButton(String label, String period, Color accent, Color text) {
     final isSelected = _selectedPeriod == period;
     return GestureDetector(
       onTap: () => setState(() => _selectedPeriod = period),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00FF88) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: isSelected ? Colors.black : Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
+        decoration: BoxDecoration(color: isSelected ? accent : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+        child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.black : text, fontWeight: FontWeight.bold, fontSize: 14)),
       ),
     );
   }
 
-  Widget _buildChartCard({
-    required String title,
-    required IconData icon,
-    required List<ProgressHistory> data,
-    required double Function(ProgressHistory) getValue,
-  }) {
+  Widget _buildChartCard(String title, IconData icon, List<ProgressHistory> data, double Function(ProgressHistory) getValue, AppLocalizations loc, Color accent, bool isDark, Color text) {
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+    final gridColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
-      ),
+      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: borderColor)),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,177 +128,67 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00FF88).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: const Color(0xFF00FF88), size: 20),
+                decoration: BoxDecoration(color: accent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, color: accent, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _selectedPeriod == 'week' ? 'Последние 7 дней' : 'Последние 30 дней',
-                      style: const TextStyle(
-                        color: Color(0xFF888888),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: TextStyle(color: text, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(
+                    _selectedPeriod == 'week' ? loc.translate('last_7_days') : loc.translate('last_30_days'),
+                    style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                  ),
+                ]),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00FF88).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${data.length} дней',
-                  style: const TextStyle(
-                    color: Color(0xFF00FF88),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                decoration: BoxDecoration(color: accent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                child: Text('${data.length} ${loc.days}', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          
           if (data.isEmpty)
-            const SizedBox(
-              height: 200,
-              child: Center(
-                child: Text(
-                  'Нет данных за выбранный период',
-                  style: TextStyle(color: Color(0xFF888888)),
-                ),
-              ),
-            )
+            SizedBox(height: 200, child: Center(child: Text(loc.translate('no_data'), style: const TextStyle(color: Color(0xFF888888)))))
           else
             SizedBox(
               height: 200,
               child: LineChart(
                 LineChartData(
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 1,
-                    getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color: const Color(0xFF2A2A2A),
-                        strokeWidth: 1,
-                      );
-                    },
-                  ),
+                  gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 1, getDrawingHorizontalLine: (_) => FlLine(color: gridColor, strokeWidth: 1)),
                   titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 30,
-                        interval: _selectedPeriod == 'week' ? 1 : 5, // Неделя: каждый день, Месяц: каждые 5 дней
+                        showTitles: true, reservedSize: 30,
+                        interval: _selectedPeriod == 'week' ? 1 : 5,
                         getTitlesWidget: (value, meta) {
                           if (value.toInt() >= 0 && value.toInt() < data.length) {
                             final date = data[value.toInt()].date;
-                            // Для недели показываем день недели, для месяца - число
                             if (_selectedPeriod == 'week') {
-                              final weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-                              final weekdayIndex = date.weekday - 1;
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  weekdays[weekdayIndex],
-                                  style: const TextStyle(
-                                    color: Color(0xFF888888),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              );
+                              final weekdays = [loc.translate('mon'), loc.translate('tue'), loc.translate('wed'), loc.translate('thu'), loc.translate('fri'), loc.translate('sat'), loc.translate('sun')];
+                              return Padding(padding: const EdgeInsets.only(top: 8), child: Text(weekdays[date.weekday - 1], style: const TextStyle(color: Color(0xFF888888), fontSize: 10, fontWeight: FontWeight.bold)));
                             } else {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  '${date.day}.${date.month}',
-                                  style: const TextStyle(
-                                    color: Color(0xFF888888),
-                                    fontSize: 9,
-                                  ),
-                                ),
-                              );
+                              return Padding(padding: const EdgeInsets.only(top: 8), child: Text('${date.day}.${date.month}', style: const TextStyle(color: Color(0xFF888888), fontSize: 9)));
                             }
                           }
                           return const Text('');
                         },
                       ),
                     ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        getTitlesWidget: (value, meta) {
-                          return Text(
-                            value.toInt().toString(),
-                            style: const TextStyle(
-                              color: Color(0xFF888888),
-                              fontSize: 10,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                    leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: const TextStyle(color: Color(0xFF888888), fontSize: 10)))),
                   ),
                   borderData: FlBorderData(show: false),
-                  minX: 0,
-                  maxX: (data.length - 1).toDouble(),
-                  minY: 0,
-                  maxY: _calculateMaxY(data, getValue),
+                  minX: 0, maxX: (data.length - 1).toDouble(), minY: 0, maxY: _calcMax(data, getValue),
                   lineBarsData: [
                     LineChartBarData(
-                      spots: data.asMap().entries.map((entry) {
-                        return FlSpot(
-                          entry.key.toDouble(),
-                          getValue(entry.value),
-                        );
-                      }).toList(),
-                      isCurved: true,
-                      color: const Color(0xFF00FF88),
-                      barWidth: 3,
-                      isStrokeCapRound: true,
-                      dotData: FlDotData(
-                        show: true,
-                        getDotPainter: (spot, percent, barData, index) {
-                          return FlDotCirclePainter(
-                            radius: 4,
-                            color: const Color(0xFF00FF88),
-                            strokeWidth: 2,
-                            strokeColor: const Color(0xFF0A0A0A),
-                          );
-                        },
-                      ),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: const Color(0xFF00FF88).withOpacity(0.1),
-                      ),
+                      spots: data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), getValue(e.value))).toList(),
+                      isCurved: true, color: accent, barWidth: 3, isStrokeCapRound: true,
+                      dotData: FlDotData(show: true, getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(radius: 4, color: accent, strokeWidth: 2, strokeColor: cardColor)),
+                      belowBarData: BarAreaData(show: true, color: accent.withOpacity(0.1)),
                     ),
                   ],
                 ),
@@ -382,13 +199,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  double _calculateMaxY(List<ProgressHistory> data, double Function(ProgressHistory) getValue) {
+  double _calcMax(List<ProgressHistory> data, double Function(ProgressHistory) getValue) {
     if (data.isEmpty) return 100;
-    
-    final maxValue = data.map(getValue).reduce((a, b) => a > b ? a : b);
-    return maxValue * 1.2; // добавляем 20% сверху для красоты
+    return data.map(getValue).reduce((a, b) => a > b ? a : b) * 1.2;
   }
 }
-
-
-

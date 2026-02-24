@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 import 'dashboard_screen.dart';
 import '../statistics/statistics_screen.dart';
 import '../duels/duels_screen.dart';
 import '../profile/profile_screen.dart';
+import '../leaderboard/leaderboard_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -12,65 +14,52 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
+  int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const DashboardScreen(),
-    const StatisticsScreen(),
-    const DuelsScreen(),
-    const ProfileScreen(),
+  final List<Widget> _screens = const [
+    DashboardScreen(),
+    StatisticsScreen(),
+    DuelsScreen(),
+    LeaderboardScreen(),
+    ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = theme.colorScheme.primary;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      body: _screens[_selectedIndex],
+      body: _screens[_currentIndex],
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(
-            top: BorderSide(color: Color(0xFF2A2A2A), width: 1),
+            top: BorderSide(
+              color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0),
+              width: 1,
+            ),
           ),
         ),
         child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: (index) => setState(() => _selectedIndex = index),
+          currentIndex: _currentIndex,
+          onTap: (index) => setState(() => _currentIndex = index),
           type: BottomNavigationBarType.fixed,
-          backgroundColor: const Color(0xFF0A0A0A),
-          selectedItemColor: const Color(0xFF00FF88),
+          backgroundColor: isDark ? const Color(0xFF0A0A0A) : Colors.white,
+          selectedItemColor: accentColor,
           unselectedItemColor: const Color(0xFF888888),
-          showSelectedLabels: true,
-          showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 12,
-          ),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Главная',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart),
-              label: 'Статистика',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.sports_kabaddi),
-              label: 'Дуэли',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: 'Профиль',
-            ),
+          selectedFontSize: 12,
+          unselectedFontSize: 12,
+          items: [
+            BottomNavigationBarItem(icon: const Icon(Icons.home), label: loc.home),
+            BottomNavigationBarItem(icon: const Icon(Icons.bar_chart), label: loc.statistics),
+            BottomNavigationBarItem(icon: const Icon(Icons.sports_kabaddi), label: loc.duels),
+            BottomNavigationBarItem(icon: const Icon(Icons.leaderboard), label: loc.leaderboard),
+            BottomNavigationBarItem(icon: const Icon(Icons.person), label: loc.profile),
           ],
         ),
       ),
     );
   }
 }
-
-
-

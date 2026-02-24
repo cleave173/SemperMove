@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
+import '../../services/supabase_service.dart';
 import '../../models/duel.dart';
+import '../../l10n/app_localizations.dart';
 import 'create_duel_screen.dart';
 import 'duel_detail_screen.dart';
 
@@ -12,13 +13,12 @@ class DuelsScreen extends StatefulWidget {
 }
 
 class _DuelsScreenState extends State<DuelsScreen> with SingleTickerProviderStateMixin {
-  final _apiService = ApiService();
+  final _supabaseService = SupabaseService();
   late TabController _tabController;
-  
+
   List<Duel> _activeDuels = [];
   List<Duel> _historyDuels = [];
-  bool _isLoadingActive = true;
-  bool _isLoadingHistory = true;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -34,339 +34,181 @@ class _DuelsScreenState extends State<DuelsScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadDuels() async {
-    setState(() {
-      _isLoadingActive = true;
-      _isLoadingHistory = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
-      final active = await _apiService.getActiveDuels();
-      final history = await _apiService.getDuelHistory();
-      
+      final active = await _supabaseService.getActiveDuels();
+      final history = await _supabaseService.getDuelHistory();
       setState(() {
         _activeDuels = active;
-        _historyDuels = history.where((d) => d.status == 'FINISHED').toList();
-        _isLoadingActive = false;
-        _isLoadingHistory = false;
+        _historyDuels = history.where((d) => d.isFinished).toList();
+        _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoadingActive = false;
-        _isLoadingHistory = false;
-      });
+      setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('${AppLocalizations.of(context).translate('load_error')}: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
+  String _getExerciseName(String category) {
+    final loc = AppLocalizations.of(context);
+    switch (category.toLowerCase()) {
+      case 'pushups': return loc.translate('push_ups');
+      case 'squats': return loc.translate('squats');
+      case 'plank': return loc.translate('plank');
+      case 'steps': return loc.translate('steps');
+      default: return category;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF333333);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'ДУЭЛИ',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _loadDuels,
-          ),
-        ],
+        backgroundColor: Colors.transparent, elevation: 0,
+        title: Text(loc.translate('duels_title'), style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        actions: [IconButton(icon: Icon(Icons.refresh, color: textColor), onPressed: _loadDuels)],
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: const Color(0xFF00FF88),
-          labelColor: const Color(0xFF00FF88),
+          indicatorColor: accentColor,
+          labelColor: accentColor,
           unselectedLabelColor: const Color(0xFF888888),
-          tabs: const [
-            Tab(text: 'Активные'),
-            Tab(text: 'История'),
-          ],
+          tabs: [Tab(text: loc.translate('active')), Tab(text: loc.translate('history'))],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildActiveTab(),
-          _buildHistoryTab(),
-        ],
-      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: accentColor))
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildDuelList(_activeDuels, loc.translate('no_active_duels'), Icons.sports_kabaddi, true),
+                _buildDuelList(_historyDuels, loc.translate('no_history'), Icons.history, false),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          final result = await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CreateDuelScreen()),
-          );
-          if (result == true) {
-            _loadDuels();
-          }
+          final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreateDuelScreen()));
+          if (result == true) _loadDuels();
         },
-        backgroundColor: const Color(0xFF00FF88),
+        backgroundColor: accentColor,
         foregroundColor: Colors.black,
         icon: const Icon(Icons.add),
-        label: const Text(
-          'СОЗДАТЬ ДУЭЛЬ',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        label: Text(loc.translate('create_duel'), style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }
 
-  Widget _buildActiveTab() {
-    if (_isLoadingActive) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF00FF88)),
-      );
-    }
+  Widget _buildDuelList(List<Duel> duels, String emptyText, IconData emptyIcon, bool isActive) {
+    final accentColor = Theme.of(context).colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (_activeDuels.isEmpty) {
+    if (duels.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.sports_kabaddi,
-              size: 80,
-              color: const Color(0xFF888888).withOpacity(0.3),
-            ),
+            Icon(emptyIcon, size: 80, color: const Color(0xFF888888).withOpacity(0.3)),
             const SizedBox(height: 16),
-            const Text(
-              'Нет активных дуэлей',
-              style: TextStyle(
-                color: Color(0xFF888888),
-                fontSize: 16,
-              ),
-            ),
+            Text(emptyText, style: const TextStyle(color: Color(0xFF888888), fontSize: 16)),
           ],
         ),
       );
     }
 
     return RefreshIndicator(
-      color: const Color(0xFF00FF88),
-      backgroundColor: const Color(0xFF1A1A1A),
+      color: accentColor,
       onRefresh: _loadDuels,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: _activeDuels.length,
+        itemCount: duels.length,
         itemBuilder: (context, index) {
-          return _buildDuelCard(_activeDuels[index], isActive: true);
-        },
-      ),
-    );
-  }
+          final duel = duels[index];
+          final loc = AppLocalizations.of(context);
+          final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+          final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
 
-  Widget _buildHistoryTab() {
-    if (_isLoadingHistory) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF00FF88)),
-      );
-    }
-
-    if (_historyDuels.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.history,
-              size: 80,
-              color: const Color(0xFF888888).withOpacity(0.3),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'История дуэлей пуста',
-              style: TextStyle(
-                color: Color(0xFF888888),
-                fontSize: 16,
+          return GestureDetector(
+            onTap: () async {
+              final result = await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => DuelDetailScreen(duelId: duel.id)),
+              );
+              if (result == true) _loadDuels();
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isActive ? accentColor : borderColor, width: isActive ? 2 : 1),
               ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      color: const Color(0xFF00FF88),
-      backgroundColor: const Color(0xFF1A1A1A),
-      onRefresh: _loadDuels,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _historyDuels.length,
-        itemBuilder: (context, index) {
-          return _buildDuelCard(_historyDuels[index], isActive: false);
-        },
-      ),
-    );
-  }
-
-  Widget _buildDuelCard(Duel duel, {required bool isActive}) {
-    return GestureDetector(
-      onTap: () async {
-        final result = await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DuelDetailScreen(duelId: duel.id),
-          ),
-        );
-        if (result == true) {
-          _loadDuels();
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive ? const Color(0xFF00FF88) : const Color(0xFF2A2A2A),
-            width: isActive ? 2 : 1,
-          ),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isActive 
-                        ? const Color(0xFF00FF88).withOpacity(0.2)
-                        : const Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    isActive ? 'В ПРОЦЕССЕ' : 'ЗАВЕРШЕНО',
-                    style: TextStyle(
-                      color: isActive ? const Color(0xFF00FF88) : const Color(0xFF888888),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (!isActive && duel.winner != null)
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Icon(Icons.emoji_events, color: Color(0xFFFFD700), size: 16),
-                      const SizedBox(width: 4),
-                      Text(
-                        duel.winner!,
-                        style: const TextStyle(
-                          color: Color(0xFFFFD700),
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isActive ? accentColor.withOpacity(0.2) : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isActive ? loc.translate('in_progress') : loc.translate('finished'),
+                          style: TextStyle(color: isActive ? accentColor : const Color(0xFF888888), fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
+                      if (!isActive && duel.winner != null)
+                        Row(children: [
+                          const Icon(Icons.emoji_events, color: Color(0xFFFFD700), size: 16),
+                          const SizedBox(width: 4),
+                          Text(duel.winner!, style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold)),
+                        ]),
                     ],
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: _buildParticipant(duel.challengerUsername ?? '?', duel.challengerScore, isDark)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text('VS', style: TextStyle(color: accentColor, fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                      Expanded(child: _buildParticipant(duel.opponentUsername ?? '?', duel.opponentScore, isDark)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    const Icon(Icons.fitness_center, color: Color(0xFF888888), size: 16),
+                    const SizedBox(width: 8),
+                    Text(_getExerciseName(duel.exerciseCategory ?? ''), style: const TextStyle(color: Color(0xFF888888), fontSize: 14)),
+                  ]),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            
-            // Участники
-            Row(
-              children: [
-                Expanded(
-                  child: _buildParticipant(
-                    duel.challenger.username,
-                    duel.isSingleCategory ? duel.challengerScore ?? 0 : duel.totalScores?.challenger ?? 0,
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    'VS',
-                    style: TextStyle(
-                      color: Color(0xFF00FF88),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _buildParticipant(
-                    duel.opponent.username,
-                    duel.isSingleCategory ? duel.opponentScore ?? 0 : duel.totalScores?.opponent ?? 0,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            
-            // Категория упражнения
-            Row(
-              children: [
-                const Icon(Icons.fitness_center, color: Color(0xFF888888), size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  _getExerciseName(duel.exerciseCategory ?? duel.exerciseCategories?.join(', ') ?? ''),
-                  style: const TextStyle(
-                    color: Color(0xFF888888),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildParticipant(String name, int score) {
+  Widget _buildParticipant(String name, int score, bool isDark) {
     return Column(
       children: [
-        Text(
-          name,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-          textAlign: TextAlign.center,
-        ),
+        Text(name, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF333333), fontSize: 16, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
         const SizedBox(height: 4),
-        Text(
-          score.toString(),
-          style: const TextStyle(
-            color: Color(0xFF00FF88),
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        Text(score.toString(), style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 24, fontWeight: FontWeight.bold)),
       ],
     );
   }
-
-  String _getExerciseName(String category) {
-    switch (category.toLowerCase()) {
-      case 'pushups':
-        return 'Отжимания';
-      case 'squats':
-        return 'Приседания';
-      case 'plank':
-        return 'Планка';
-      case 'steps':
-        return 'Шаги';
-      default:
-        return category;
-    }
-  }
 }
-
-
-

@@ -1,6 +1,6 @@
 class ProgressHistory {
   final int? id;
-  final int userId;
+  final String userId;
   final DateTime date;
   final int steps;
   final int pushUps;
@@ -22,29 +22,25 @@ class ProgressHistory {
   factory ProgressHistory.fromJson(Map<String, dynamic> json) {
     return ProgressHistory(
       id: json['id'],
-      userId: json['userId'],
+      userId: json['user_id'] ?? '',
       date: DateTime.parse(json['date']),
       steps: json['steps'] ?? 0,
-      pushUps: json['pushUps'] ?? 0,
+      pushUps: json['push_ups'] ?? 0,
       squats: json['squats'] ?? 0,
-      plankSeconds: json['plankSeconds'] ?? 0,
-      waterMl: json['waterMl'] ?? 0,
+      plankSeconds: json['plank_seconds'] ?? 0,
+      waterMl: json['water_ml'] ?? 0,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'userId': userId,
+      'user_id': userId,
       'date': date.toIso8601String().split('T')[0],
       'steps': steps,
-      'pushUps': pushUps,
+      'push_ups': pushUps,
       'squats': squats,
-      'plankSeconds': plankSeconds,
-      'waterMl': waterMl,
+      'plank_seconds': plankSeconds,
+      'water_ml': waterMl,
     };
   }
 }
-
-
-

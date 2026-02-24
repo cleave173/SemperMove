@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
+import '../../services/supabase_service.dart';
 import '../../models/user.dart';
+import '../../l10n/app_localizations.dart';
 
 class CreateDuelScreen extends StatefulWidget {
   const CreateDuelScreen({super.key});
@@ -10,20 +11,13 @@ class CreateDuelScreen extends StatefulWidget {
 }
 
 class _CreateDuelScreenState extends State<CreateDuelScreen> {
-  final _apiService = ApiService();
-  
+  final _supabaseService = SupabaseService();
+
   List<User> _users = [];
   User? _selectedOpponent;
   String? _selectedExercise;
   bool _isLoading = true;
   bool _isCreating = false;
-
-  final List<Map<String, dynamic>> _exercises = [
-    {'id': 'pushups', 'name': 'Отжимания', 'icon': Icons.accessibility_new},
-    {'id': 'squats', 'name': 'Приседания', 'icon': Icons.fitness_center},
-    {'id': 'plank', 'name': 'Планка', 'icon': Icons.timer},
-    {'id': 'steps', 'name': 'Шаги', 'icon': Icons.directions_walk},
-  ];
 
   @override
   void initState() {
@@ -33,58 +27,32 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> {
 
   Future<void> _loadUsers() async {
     try {
-      final users = await _apiService.getAllUsers();
-      setState(() {
-        _users = users;
-        _isLoading = false;
-      });
+      final users = await _supabaseService.getAllUsers();
+      setState(() { _users = users; _isLoading = false; });
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('${AppLocalizations.of(context).translate('load_error')}: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
   Future<void> _createDuel() async {
-    if (_selectedOpponent == null || _selectedExercise == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Выберите оппонента и упражнение'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    if (_selectedOpponent == null || _selectedExercise == null || _selectedOpponent!.id == null) return;
 
     setState(() => _isCreating = true);
-
     try {
-      await _apiService.startDuel(_selectedOpponent!.id!, _selectedExercise!);
-      
+      await _supabaseService.startDuel(_selectedOpponent!.id!, _selectedExercise!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Дуэль создана!'),
-            backgroundColor: Color(0xFF00FF88),
-          ),
+          SnackBar(content: Text('${AppLocalizations.of(context).translate('create_duel')}!'), backgroundColor: Theme.of(context).colorScheme.primary),
         );
         Navigator.of(context).pop(true);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isCreating = false);
     }
@@ -92,174 +60,89 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF333333);
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+
+    final exercises = [
+      {'id': 'pushups', 'name': loc.translate('push_ups'), 'icon': Icons.accessibility_new},
+      {'id': 'squats', 'name': loc.translate('squats'), 'icon': Icons.fitness_center},
+      {'id': 'plank', 'name': loc.translate('plank'), 'icon': Icons.timer},
+      {'id': 'steps', 'name': loc.translate('steps'), 'icon': Icons.directions_walk},
+    ];
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'СОЗДАТЬ ДУЭЛЬ',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
+        backgroundColor: Colors.transparent, elevation: 0,
+        leading: IconButton(icon: Icon(Icons.arrow_back, color: textColor), onPressed: () => Navigator.pop(context)),
+        title: Text(loc.translate('create_duel'), style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1)),
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00FF88)),
-            )
+          ? Center(child: CircularProgressIndicator(color: accentColor))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Выбор оппонента
-                  const Text(
-                    'Выберите оппонента',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  Text(loc.translate('username'), style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-                  
                   Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF2A2A2A)),
-                    ),
+                    decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: borderColor)),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: DropdownButton<User>(
                       value: _selectedOpponent,
-                      hint: const Text(
-                        'Выберите пользователя',
-                        style: TextStyle(color: Color(0xFF888888)),
-                      ),
+                      hint: Text(loc.translate('username'), style: const TextStyle(color: Color(0xFF888888))),
                       isExpanded: true,
-                      dropdownColor: const Color(0xFF1A1A1A),
+                      dropdownColor: cardColor,
                       underline: Container(),
-                      style: const TextStyle(color: Colors.white),
-                      items: _users.map((user) {
-                        return DropdownMenuItem<User>(
-                          value: user,
-                          child: Text(user.username),
-                        );
-                      }).toList(),
-                      onChanged: (user) {
-                        setState(() => _selectedOpponent = user);
-                      },
+                      style: TextStyle(color: textColor),
+                      items: _users.map((u) => DropdownMenuItem<User>(value: u, child: Text(u.username))).toList(),
+                      onChanged: (u) => setState(() => _selectedOpponent = u),
                     ),
                   ),
                   const SizedBox(height: 32),
 
-                  // Выбор упражнения
-                  const Text(
-                    'Выберите упражнение',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  ...  _exercises.map((exercise) {
-                    final isSelected = _selectedExercise == exercise['id'];
+                  ...exercises.map((ex) {
+                    final isSelected = _selectedExercise == ex['id'];
                     return GestureDetector(
-                      onTap: () => setState(() => _selectedExercise = exercise['id']),
+                      onTap: () => setState(() => _selectedExercise = ex['id'] as String),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: isSelected 
-                              ? const Color(0xFF00FF88).withOpacity(0.1)
-                              : const Color(0xFF1A1A1A),
+                          color: isSelected ? accentColor.withOpacity(0.1) : cardColor,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected 
-                                ? const Color(0xFF00FF88)
-                                : const Color(0xFF2A2A2A),
-                            width: isSelected ? 2 : 1,
-                          ),
+                          border: Border.all(color: isSelected ? accentColor : borderColor, width: isSelected ? 2 : 1),
                         ),
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF00FF88)
-                                    : const Color(0xFF2A2A2A),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                exercise['icon'],
-                                color: isSelected ? Colors.black : const Color(0xFF888888),
-                                size: 24,
-                              ),
+                              decoration: BoxDecoration(color: isSelected ? accentColor : (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(12)),
+                              child: Icon(ex['icon'] as IconData, color: isSelected ? Colors.black : const Color(0xFF888888), size: 24),
                             ),
                             const SizedBox(width: 16),
-                            Text(
-                              exercise['name'],
-                              style: TextStyle(
-                                color: isSelected ? const Color(0xFF00FF88) : Colors.white,
-                                fontSize: 16,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
+                            Text(ex['name'] as String, style: TextStyle(color: isSelected ? accentColor : textColor, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
                             const Spacer(),
-                            if (isSelected)
-                              const Icon(
-                                Icons.check_circle,
-                                color: Color(0xFF00FF88),
-                              ),
+                            if (isSelected) Icon(Icons.check_circle, color: accentColor),
                           ],
                         ),
                       ),
                     );
-                  }).toList(),
-
+                  }),
                   const SizedBox(height: 32),
 
-                  // Кнопка создания
                   SizedBox(
                     height: 56,
                     child: ElevatedButton(
                       onPressed: _isCreating ? null : _createDuel,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00FF88),
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
                       child: _isCreating
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.black,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text(
-                              'СОЗДАТЬ ДУЭЛЬ',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
-                              ),
-                            ),
+                          ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                          : Text(loc.translate('create_duel'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
                     ),
                   ),
                 ],
@@ -268,6 +151,3 @@ class _CreateDuelScreenState extends State<CreateDuelScreen> {
     );
   }
 }
-
-
-
