@@ -1,0 +1,55 @@
+name: frontend
+description: "SemperMove - Fitness App"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # UI & Icons
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  provider: ^6.1.1
+
+  # Supabase
+  supabase_flutter: ^2.5.0
+
+  # Local Storage
+  shared_preferences: ^2.2.2
+
+  # Charts
+  fl_chart: ^0.66.0
+
+  # Date & Time
+  intl: ^0.20.2
+
+  # Image Picker (for avatar)
+  image_picker: ^1.0.7
+
+  # Notifications
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+
+  # AI Pose Detection
+  google_mlkit_pose_detection: ^0.12.0
+  camera: ^0.11.0+2
+  permission_handler: ^11.3.0
+
+  # Step Tracking
+  pedometer: ^4.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
