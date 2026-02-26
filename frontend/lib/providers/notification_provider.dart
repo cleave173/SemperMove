@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/notification_service.dart';
 
 /// Провайдер для управления состоянием уведомлений
@@ -25,8 +26,28 @@ class NotificationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Запрашивает разрешение на уведомления (Android 13+)
+  /// Возвращает true если разрешение получено
+  Future<bool> _ensureNotificationPermission() async {
+    final status = await Permission.notification.status;
+    if (status.isGranted) return true;
+
+    final result = await Permission.notification.request();
+    debugPrint('Notification permission result: $result');
+    return result.isGranted;
+  }
+
   /// Переключить напоминания о тренировках
   Future<void> toggleWorkoutReminders(bool enabled) async {
+    if (enabled) {
+      // Сначала запросить разрешение
+      final granted = await _ensureNotificationPermission();
+      if (!granted) {
+        debugPrint('Notification permission denied — cannot enable workout reminders');
+        return; // Не включаем если разрешение не дано
+      }
+    }
+
     _workoutRemindersEnabled = enabled;
     notifyListeners();
 
@@ -49,6 +70,14 @@ class NotificationProvider extends ChangeNotifier {
 
   /// Переключить напоминания о воде
   Future<void> toggleWaterReminders(bool enabled) async {
+    if (enabled) {
+      final granted = await _ensureNotificationPermission();
+      if (!granted) {
+        debugPrint('Notification permission denied — cannot enable water reminders');
+        return;
+      }
+    }
+
     _waterRemindersEnabled = enabled;
     notifyListeners();
 

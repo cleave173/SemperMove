@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,6 +49,10 @@ class NotificationService {
 
     await _plugin.initialize(initSettings);
 
+    // Request Android 13+ notification permission
+    final notifPermission = await Permission.notification.request();
+    debugPrint('Notification permission: $notifPermission');
+
     // Request iOS permissions
     await _plugin
         .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
@@ -72,6 +77,11 @@ class NotificationService {
 
     if (waterEnabled) {
       await scheduleWaterReminders();
+    }
+
+    final activityEnabled = prefs.getBool('notif_activity_enabled') ?? false;
+    if (activityEnabled) {
+      await scheduleActivityReminders();
     }
   }
 
@@ -194,8 +204,8 @@ class NotificationService {
   }) async {
     await _plugin.show(
       _duelNotificationId,
-      '⚔️ Дуэль завершена!',
-      '🏆 Победитель: $winner ($exerciseType)',
+      'Дуэль завершена!',
+      'Победитель: $winner ($exerciseType)',
       NotificationDetails(
         android: AndroidNotificationDetails(
           _duelChannelId,
@@ -212,6 +222,101 @@ class NotificationService {
         ),
       ),
     );
+  }
+
+  // ==================== TEST & SETTINGS ====================
+
+  /// Мгновенное тестовое уведомление
+  Future<void> showTestNotification() async {
+    await _plugin.show(
+      999,
+      'SemperMove',
+      'Уведомления работают! 🎉',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'test_channel',
+          'Тестовые',
+          channelDescription: 'Канал для тестовых уведомлений',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+    );
+  }
+
+  // ==================== ACTIVITY REMINDERS (каждые 3ч) ====================
+
+  static const _activityChannelId = 'activity_reminders';
+  static const _activityBaseNotificationId = 400; // 400-404
+
+  /// Планирует напоминания об активности каждые 3 часа: 9:00, 12:00, 15:00, 18:00, 21:00
+  Future<void> scheduleActivityReminders() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notif_activity_enabled', true);
+
+    // Отменяем старые
+    for (int i = 0; i < 5; i++) {
+      await _plugin.cancel(_activityBaseNotificationId + i);
+    }
+
+    final hours = [9, 12, 15, 18, 21];
+    final messages = [
+      'Утро — время для разминки! Начни день с активности.',
+      'Обеденный перерыв — отличный момент для прогулки!',
+      'Не забывай двигаться! Сделай пару упражнений.',
+      'Вечерняя тренировка — лучший способ снять стресс!',
+      'Последний шанс сделать пару повторений сегодня!',
+    ];
+
+    for (int i = 0; i < hours.length; i++) {
+      final now = tz.TZDateTime.now(tz.local);
+      var scheduledDate = tz.TZDateTime(
+        tz.local, now.year, now.month, now.day, hours[i], 0,
+      );
+
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      await _plugin.zonedSchedule(
+        _activityBaseNotificationId + i,
+        'SemperMove',
+        messages[i],
+        scheduledDate,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _activityChannelId,
+            'Напоминания об активности',
+            channelDescription: 'Напоминания каждые 3 часа о физической активности',
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time, // Repeat daily
+      );
+    }
+  }
+
+  Future<void> cancelActivityReminders() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notif_activity_enabled', false);
+    for (int i = 0; i < 5; i++) {
+      await _plugin.cancel(_activityBaseNotificationId + i);
+    }
   }
 
   // ==================== GETTERS ====================

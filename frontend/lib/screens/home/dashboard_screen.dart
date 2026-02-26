@@ -44,78 +44,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _showUpdateDialog(String category, int currentValue) async {
-    final loc = AppLocalizations.of(context);
-    final controller = TextEditingController(text: currentValue.toString());
-    final accentColor = Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-
-    final result = await showDialog<int>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: cardColor,
-        title: Text(category, style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          style: TextStyle(color: isDark ? Colors.white : Colors.black),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F5),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(loc.cancel, style: TextStyle(color: const Color(0xFF888888))),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, int.tryParse(controller.text) ?? currentValue),
-            child: Text(loc.save, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null) {
-      try {
-        final updates = <String, dynamic>{};
-        switch (category) {
-          case 'steps': updates['daily_steps'] = result; break;
-          case 'push_ups': updates['push_ups'] = result; break;
-          case 'squats': updates['squats'] = result; break;
-          case 'water': updates['water_ml'] = result; break;
-        }
-
-        await context.read<UserProvider>().updateProgress(
-          dailySteps: updates['daily_steps'],
-          pushUps: updates['push_ups'],
-          squats: updates['squats'],
-          waterMl: updates['water_ml'],
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc.progressUpdated),
-              backgroundColor: accentColor,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${loc.error}: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
 
   void _openPlankTimer() {
     final user = context.read<UserProvider>().user;
@@ -291,9 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
     final progress = goal > 0 ? (current / goal).clamp(0.0, 1.0) : 0.0;
 
-    return GestureDetector(
-      onTap: () => _showUpdateDialog('steps', current),
-      child: Container(
+    return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: cardColor,
@@ -372,8 +298,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   /// Карточка упражнения с кнопкой AI-трекинга
@@ -407,9 +332,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _showUpdateDialog(category, current),
-                  child: Column(
+                child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(title, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF333333), fontSize: 16, fontWeight: FontWeight.bold)),
@@ -419,7 +342,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: const TextStyle(color: Color(0xFF888888), fontSize: 13),
                       ),
                     ],
-                  ),
                 ),
               ),
               // Кнопка AI-трекинга
@@ -748,9 +670,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final progress = goal > 0 ? (current / goal).clamp(0.0, 1.0) : 0.0;
 
 
-    return GestureDetector(
-      onTap: () => _showUpdateDialog(category, current),
-      child: Container(
+    return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: cardColor,
@@ -804,8 +724,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildPlankCard(String title, int current, int goal, String unit) {

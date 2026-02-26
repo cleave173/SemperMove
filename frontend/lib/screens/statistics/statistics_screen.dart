@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
+import '../../providers/user_provider.dart';
 import '../../services/supabase_service.dart';
 import '../../models/progress_history.dart';
 import '../../l10n/app_localizations.dart';
@@ -27,13 +28,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     setState(() => _isLoading = true);
     try {
       final history = await _supabaseService.getProgressHistory();
-      setState(() { _history = history; _isLoading = false; });
-    } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${AppLocalizations.of(context).translate('load_error')}: $e'), backgroundColor: Colors.red),
-        );
+        setState(() { _history = history; _isLoading = false; });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -43,7 +43,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final now = DateTime.now();
     final days = _selectedPeriod == 'week' ? 7 : 30;
     final cutoff = now.subtract(Duration(days: days));
-    return _history.where((h) => h.date.isAfter(cutoff)).toList()..sort((a, b) => a.date.compareTo(b.date));
+    return _history.where((h) => h.date.isAfter(cutoff)).toList();
   }
 
   @override
@@ -53,6 +53,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final accentColor = theme.colorScheme.primary;
     final isDark = theme.brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : const Color(0xFF333333);
+    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+
+    final user = context.watch<UserProvider>().user;
+    final filtered = _getFilteredHistory();
+    final days = _selectedPeriod == 'week' ? 7 : 30;
 
     return Scaffold(
       appBar: AppBar(
@@ -71,15 +77,53 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildPeriodSelector(loc, accentColor, isDark, textColor),
-                    const SizedBox(height: 24),
-                    _buildChartCard(loc.translate('steps'), Icons.directions_walk, _getFilteredHistory(), (h) => h.steps.toDouble(), loc, accentColor, isDark, textColor),
-                    const SizedBox(height: 16),
-                    _buildChartCard(loc.translate('push_ups'), Icons.accessibility_new, _getFilteredHistory(), (h) => h.pushUps.toDouble(), loc, accentColor, isDark, textColor),
-                    const SizedBox(height: 16),
-                    _buildChartCard(loc.translate('squats'), Icons.fitness_center, _getFilteredHistory(), (h) => h.squats.toDouble(), loc, accentColor, isDark, textColor),
-                    const SizedBox(height: 16),
-                    _buildChartCard(loc.translate('plank_sec'), Icons.timer, _getFilteredHistory(), (h) => h.plankSeconds.toDouble(), loc, accentColor, isDark, textColor),
+                    // Сводка за сегодня
+                    if (user != null) _buildTodayCard(loc, user, accentColor, isDark, cardColor, borderColor, textColor),
+                    const SizedBox(height: 20),
+
+                    // Выбор периода
+                    _buildPeriodSelector(loc, accentColor, isDark, textColor, cardColor, borderColor),
+                    const SizedBox(height: 20),
+
+                    // Карточки статистики за период
+                    _buildActivityCard(
+                      loc.translate('steps'), Icons.directions_walk, accentColor,
+                      _sum(filtered, (h) => h.steps), _avg(filtered, (h) => h.steps, days),
+                      user?.stepsGoal ?? 10000, '',
+                      isDark, cardColor, borderColor, textColor,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildActivityCard(
+                      loc.translate('push_ups'), Icons.accessibility_new, Colors.orangeAccent,
+                      _sum(filtered, (h) => h.pushUps), _avg(filtered, (h) => h.pushUps, days),
+                      user?.pushUpsGoal ?? 100, loc.translate('times'),
+                      isDark, cardColor, borderColor, textColor,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildActivityCard(
+                      loc.translate('squats'), Icons.fitness_center, Colors.purpleAccent,
+                      _sum(filtered, (h) => h.squats), _avg(filtered, (h) => h.squats, days),
+                      user?.squatsGoal ?? 100, loc.translate('times'),
+                      isDark, cardColor, borderColor, textColor,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildActivityCard(
+                      loc.translate('plank'), Icons.timer, Colors.tealAccent,
+                      _sum(filtered, (h) => h.plankSeconds), _avg(filtered, (h) => h.plankSeconds, days),
+                      user?.plankGoal ?? 300, loc.translate('sec'),
+                      isDark, cardColor, borderColor, textColor,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildActivityCard(
+                      loc.translate('water'), Icons.water_drop, Colors.blue.shade300,
+                      _sum(filtered, (h) => h.waterMl), _avg(filtered, (h) => h.waterMl, days),
+                      user?.waterGoal ?? 2000, loc.translate('ml'),
+                      isDark, cardColor, borderColor, textColor,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Дни активности
+                    _buildDaysInfo(loc, filtered, days, accentColor, isDark, cardColor, borderColor, textColor),
                   ],
                 ),
               ),
@@ -87,11 +131,47 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildPeriodSelector(AppLocalizations loc, Color accent, bool isDark, Color text) {
-    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
-    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+  Widget _buildTodayCard(AppLocalizations loc, dynamic user, Color accent, bool isDark, Color card, Color border, Color text) {
+    final items = [
+      {'icon': Icons.directions_walk, 'value': '${user.dailySteps}', 'label': loc.translate('steps'), 'color': accent},
+      {'icon': Icons.accessibility_new, 'value': '${user.pushUps}', 'label': loc.translate('push_ups'), 'color': Colors.orangeAccent},
+      {'icon': Icons.fitness_center, 'value': '${user.squats}', 'label': loc.translate('squats'), 'color': Colors.purpleAccent},
+      {'icon': Icons.timer, 'value': '${user.plankSeconds ~/ 60}:${(user.plankSeconds % 60).toString().padLeft(2, '0')}', 'label': loc.translate('plank'), 'color': Colors.tealAccent},
+      {'icon': Icons.water_drop, 'value': '${user.waterMl}', 'label': loc.translate('water'), 'color': Colors.blue.shade300},
+    ];
+
     return Container(
-      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: borderColor)),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(16), border: Border.all(color: border)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(loc.todayActivity, style: TextStyle(color: text, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: items.map((item) => Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: (item['color'] as Color).withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(item['icon'] as IconData, color: item['color'] as Color, size: 20),
+                ),
+                const SizedBox(height: 6),
+                Text(item['value'] as String, style: TextStyle(color: text, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text(item['label'] as String, style: const TextStyle(color: Color(0xFF888888), fontSize: 10)),
+              ],
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodSelector(AppLocalizations loc, Color accent, bool isDark, Color text, Color card, Color border) {
+    return Container(
+      decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
       child: Row(
         children: [
           Expanded(child: _periodButton(loc.translate('week'), 'week', accent, text)),
@@ -113,14 +193,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildChartCard(String title, IconData icon, List<ProgressHistory> data, double Function(ProgressHistory) getValue, AppLocalizations loc, Color accent, bool isDark, Color text) {
-    final cardColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
-    final gridColor = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+  Widget _buildActivityCard(
+    String title, IconData icon, Color color,
+    int total, double avg, int goal, String unit,
+    bool isDark, Color card, Color border, Color text,
+  ) {
+    final progress = goal > 0 ? (avg / goal).clamp(0.0, 1.0) : 0.0;
 
     return Container(
-      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: borderColor)),
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(14), border: Border.all(color: border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -128,79 +210,89 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: accent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, color: accent, size: 20),
+                decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, color: color, size: 20),
               ),
               const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: TextStyle(color: text, fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
+              Expanded(child: Text(title, style: TextStyle(color: text, fontSize: 16, fontWeight: FontWeight.bold))),
+              // Сумма за период
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('$total ${unit.isNotEmpty ? unit : ''}', style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
                   Text(
-                    _selectedPeriod == 'week' ? loc.translate('last_7_days') : loc.translate('last_30_days'),
-                    style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                    '${avg.toStringAsFixed(0)} / ${goal} ${unit.isNotEmpty ? unit : ''} ${_selectedPeriod == 'week' ? 'в день' : 'в день'}',
+                    style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
                   ),
-                ]),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: accent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: Text('${data.length} ${loc.days}', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          if (data.isEmpty)
-            SizedBox(height: 200, child: Center(child: Text(loc.translate('no_data'), style: const TextStyle(color: Color(0xFF888888)))))
-          else
-            SizedBox(
-              height: 200,
-              child: LineChart(
-                LineChartData(
-                  gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 1, getDrawingHorizontalLine: (_) => FlLine(color: gridColor, strokeWidth: 1)),
-                  titlesData: FlTitlesData(
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true, reservedSize: 30,
-                        interval: _selectedPeriod == 'week' ? 1 : 5,
-                        getTitlesWidget: (value, meta) {
-                          if (value.toInt() >= 0 && value.toInt() < data.length) {
-                            final date = data[value.toInt()].date;
-                            if (_selectedPeriod == 'week') {
-                              final weekdays = [loc.translate('mon'), loc.translate('tue'), loc.translate('wed'), loc.translate('thu'), loc.translate('fri'), loc.translate('sat'), loc.translate('sun')];
-                              return Padding(padding: const EdgeInsets.only(top: 8), child: Text(weekdays[date.weekday - 1], style: const TextStyle(color: Color(0xFF888888), fontSize: 10, fontWeight: FontWeight.bold)));
-                            } else {
-                              return Padding(padding: const EdgeInsets.only(top: 8), child: Text('${date.day}.${date.month}', style: const TextStyle(color: Color(0xFF888888), fontSize: 9)));
-                            }
-                          }
-                          return const Text('');
-                        },
-                      ),
-                    ),
-                    leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: const TextStyle(color: Color(0xFF888888), fontSize: 10)))),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  minX: 0, maxX: (data.length - 1).toDouble(), minY: 0, maxY: _calcMax(data, getValue),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), getValue(e.value))).toList(),
-                      isCurved: true, color: accent, barWidth: 3, isStrokeCapRound: true,
-                      dotData: FlDotData(show: true, getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(radius: 4, color: accent, strokeWidth: 2, strokeColor: cardColor)),
-                      belowBarData: BarAreaData(show: true, color: accent.withOpacity(0.1)),
-                    ),
-                  ],
-                ),
-              ),
+          const SizedBox(height: 12),
+          // Прогресс-бар
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('${(progress * 100).toStringAsFixed(0)}%', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
   }
 
-  double _calcMax(List<ProgressHistory> data, double Function(ProgressHistory) getValue) {
-    if (data.isEmpty) return 100;
-    return data.map(getValue).reduce((a, b) => a > b ? a : b) * 1.2;
+  Widget _buildDaysInfo(AppLocalizations loc, List<ProgressHistory> data, int totalDays, Color accent, bool isDark, Color card, Color border, Color text) {
+    final activeDays = data.where((h) => h.steps > 0 || h.pushUps > 0 || h.squats > 0 || h.plankSeconds > 0 || h.waterMl > 0).length;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(14), border: Border.all(color: border)),
+      child: Row(
+        children: [
+          Icon(Icons.calendar_today, color: accent, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _selectedPeriod == 'week' ? loc.translate('last_7_days') : loc.translate('last_30_days'),
+                  style: TextStyle(color: text, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$activeDays / $totalDays ${loc.days}',
+                  style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(color: accent.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+            child: Text('${(activeDays / totalDays * 100).toStringAsFixed(0)}%', style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helpers
+  int _sum(List<ProgressHistory> data, int Function(ProgressHistory) getter) {
+    if (data.isEmpty) return 0;
+    return data.fold(0, (sum, h) => sum + getter(h));
+  }
+
+  double _avg(List<ProgressHistory> data, int Function(ProgressHistory) getter, int totalDays) {
+    if (data.isEmpty) return 0;
+    return _sum(data, getter) / totalDays;
   }
 }

@@ -38,8 +38,20 @@ class _DuelsScreenState extends State<DuelsScreen> with SingleTickerProviderStat
     try {
       final active = await _supabaseService.getActiveDuels();
       final history = await _supabaseService.getDuelHistory();
+
+      // Автоматически синхронизируем очки всех активных дуэлей из профилей
+      final syncedActive = <Duel>[];
+      for (final duel in active) {
+        try {
+          final synced = await _supabaseService.syncDuelScoresFromProfiles(duel.id);
+          syncedActive.add(synced);
+        } catch (_) {
+          syncedActive.add(duel);
+        }
+      }
+
       setState(() {
-        _activeDuels = active;
+        _activeDuels = syncedActive;
         _historyDuels = history.where((d) => d.isFinished).toList();
         _isLoading = false;
       });

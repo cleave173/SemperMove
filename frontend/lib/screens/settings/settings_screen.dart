@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/locale_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../../services/notification_service.dart';
 import '../../l10n/app_localizations.dart';
 
 class SettingsScreen extends StatefulWidget {

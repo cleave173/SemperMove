@@ -81,6 +81,14 @@ class SupabaseService {
     await _client.auth.signOut();
   }
 
+  /// Сброс пароля — отправляет письмо со ссылкой на сброс
+  Future<void> resetPassword(String email) async {
+    await _client.auth.resetPasswordForEmail(
+      email,
+      redirectTo: 'sempermove://callback',
+    );
+  }
+
   // ==================== PROFILE ====================
 
   /// Ensures a profile row exists in the `profiles` table for the current user.
@@ -169,6 +177,44 @@ class SupabaseService {
     return publicUrl;
   }
 
+  // ==================== DAILY RESET ====================
+
+  /// Сбрасывает ежедневный прогресс (шаги, отжимания, приседания, планка, вода)
+  /// Перед сбросом сохраняет данные в progress_history за вчера
+  Future<app.User> resetDailyProgress() async {
+    final userId = currentUserId;
+    if (userId == null) throw Exception('Не авторизован');
+
+    final profile = await getProfile();
+    final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
+
+    // Сохраняем вчерашний прогресс в историю (если есть данные)
+    if (profile.dailySteps > 0 || profile.pushUps > 0 || profile.squats > 0 || profile.plankSeconds > 0 || profile.waterMl > 0) {
+      try {
+        await _client.from('progress_history').upsert({
+          'user_id': userId,
+          'date': profile.lastActivityDate ?? yesterday,
+          'steps': profile.dailySteps,
+          'push_ups': profile.pushUps,
+          'squats': profile.squats,
+          'plank_seconds': profile.plankSeconds,
+          'water_ml': profile.waterMl,
+        }, onConflict: 'user_id,date');
+      } catch (_) {}
+    }
+
+    // Сбрасываем счётчики
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    return await updateProfile({
+      'daily_steps': 0,
+      'push_ups': 0,
+      'squats': 0,
+      'plank_seconds': 0,
+      'water_ml': 0,
+      'last_activity_date': today,
+    });
+  }
+
   // ==================== PROGRESS ====================
 
   Future<app.User> updateProgress({
@@ -211,7 +257,24 @@ class SupabaseService {
       updates['last_activity_date'] = today;
     }
 
-    return await updateProfile(updates);
+    final updatedUser = await updateProfile(updates);
+
+    // Автоматически записываем в progress_history за сегодня
+    try {
+      await _client.from('progress_history').upsert({
+        'user_id': userId,
+        'date': today,
+        'steps': updatedUser.dailySteps,
+        'push_ups': updatedUser.pushUps,
+        'squats': updatedUser.squats,
+        'plank_seconds': updatedUser.plankSeconds,
+        'water_ml': updatedUser.waterMl,
+      }, onConflict: 'user_id,date');
+    } catch (_) {
+      // Не ломаем основную логику если upsert не прошёл
+    }
+
+    return updatedUser;
   }
 
   // ==================== HISTORY ====================
@@ -310,6 +373,40 @@ class SupabaseService {
         .single();
 
     return Duel.fromJson(data);
+  }
+
+  /// Синхронизирует очки дуэли из профилей участников
+  Future<Duel> syncDuelScoresFromProfiles(int duelId) async {
+    final duel = await getDuel(duelId);
+    final category = duel.exerciseCategory?.toLowerCase() ?? '';
+
+    // Получаем профили обоих участников
+    final challengerProfile = await _client.from('profiles').select().eq('id', duel.challengerId).single();
+    final opponentProfile = await _client.from('profiles').select().eq('id', duel.opponentId).single();
+
+    int challengerScore = 0;
+    int opponentScore = 0;
+
+    switch (category) {
+      case 'pushups':
+        challengerScore = challengerProfile['push_ups'] ?? 0;
+        opponentScore = opponentProfile['push_ups'] ?? 0;
+        break;
+      case 'squats':
+        challengerScore = challengerProfile['squats'] ?? 0;
+        opponentScore = opponentProfile['squats'] ?? 0;
+        break;
+      case 'plank':
+        challengerScore = challengerProfile['plank_seconds'] ?? 0;
+        opponentScore = opponentProfile['plank_seconds'] ?? 0;
+        break;
+      case 'steps':
+        challengerScore = challengerProfile['daily_steps'] ?? 0;
+        opponentScore = opponentProfile['daily_steps'] ?? 0;
+        break;
+    }
+
+    return await updateDuelScores(duelId, challengerScore, opponentScore);
   }
 
   Future<Duel> finishDuel(int duelId) async {

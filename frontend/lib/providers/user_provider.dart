@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/user.dart';
 import '../models/achievement.dart';
 import '../services/supabase_service.dart';
+import '../utils/app_logger.dart';
 
 class UserProvider extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
@@ -17,19 +18,24 @@ class UserProvider extends ChangeNotifier {
   Future<void> loadUser() async {
     _isLoading = true;
     notifyListeners();
+    logger.info('UserProvider', 'Loading user profile...');
 
     try {
       if (_supabaseService.isAuthenticated) {
         _user = await _supabaseService.getProfile();
-        // Check and unlock achievements based on current progress
+        // Проверяем нужен ли сброс ежедневного прогресса
         if (_user != null) {
+          logger.info('UserProvider', 'User loaded: ${_user!.username}, steps=${_user!.dailySteps}, pushups=${_user!.pushUps}');
+          logger.test('User profile load', true, details: 'username=${_user!.username}');
+          await _checkDailyReset();
           await _checkAchievements();
         }
       } else {
         _user = null;
+        logger.warning('UserProvider', 'User not authenticated');
       }
     } catch (e) {
-      debugPrint('Error loading user: $e');
+      logger.error('UserProvider', 'Failed to load user', e);
       _user = null;
     } finally {
       _isLoading = false;
@@ -41,9 +47,10 @@ class UserProvider extends ChangeNotifier {
     if (!_supabaseService.isAuthenticated) return;
     try {
       _user = await _supabaseService.getProfile();
+      logger.action('UserProvider', 'User refreshed', data: {'steps': _user?.dailySteps, 'pushups': _user?.pushUps});
       notifyListeners();
     } catch (e) {
-      debugPrint('Error refreshing user: $e');
+      logger.error('UserProvider', 'Refresh failed', e);
     }
   }
 
@@ -90,6 +97,28 @@ class UserProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Check if we need to reset daily progress (new day)
+  Future<void> _checkDailyReset() async {
+    if (_user == null) return;
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final lastDate = _user!.lastActivityDate;
+
+    logger.info('DailyReset', 'Checking: lastDate=$lastDate, today=$today');
+
+    // Если последняя активность была не сегодня — сбрасываем
+    if (lastDate != null && lastDate != today) {
+      try {
+        logger.action('DailyReset', 'Resetting daily progress', data: {'from': lastDate, 'to': today});
+        _user = await _supabaseService.resetDailyProgress();
+        logger.test('Daily reset', true, details: 'counters zeroed, history saved');
+      } catch (e) {
+        logger.error('DailyReset', 'Reset failed', e);
+      }
+    } else {
+      logger.info('DailyReset', 'No reset needed (same day)');
     }
   }
 

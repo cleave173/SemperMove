@@ -8,7 +8,6 @@ import '../../providers/locale_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../models/user.dart';
 import '../../l10n/app_localizations.dart';
-import '../../l10n/app_localizations.dart';
 import '../settings/settings_screen.dart';
 import '../auth/login_screen.dart';
 
@@ -170,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('🔥', style: TextStyle(fontSize: 16)),
+                          const Icon(Icons.local_fire_department, color: Colors.orangeAccent, size: 18),
                           const SizedBox(width: 4),
                           Text(
                             '${_user?.currentStreak ?? 0} ${loc.days} ${loc.streak.toLowerCase()}',

@@ -8,20 +8,39 @@ import 'providers/locale_provider.dart';
 import 'providers/user_provider.dart';
 import 'providers/notification_provider.dart';
 import 'services/notification_service.dart';
+import 'utils/app_logger.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/reset_password_screen.dart';
 import 'screens/home/main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  logger.info('App', '========== SemperMove starting ==========');
 
-  await Supabase.initialize(
-    url: 'https://uahgtpjqeswqnptokqjc.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhaGd0cGpxZXN3cW5wdG9rcWpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjIzMjYsImV4cCI6MjA4NTgzODMyNn0.s0ysAH6b_AphRIjmNKTuFh0PWjvlgQRgfokfUun54q0',
-  );
+  // Supabase — с deep link для сброса пароля
+  try {
+    await Supabase.initialize(
+      url: 'https://uahgtpjqeswqnptokqjc.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhaGd0cGpxZXN3cW5wdG9rcWpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjIzMjYsImV4cCI6MjA4NTgzODMyNn0.s0ysAH6b_AphRIjmNKTuFh0PWjvlgQRgfokfUun54q0',
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+      ),
+    );
+    logger.test('Supabase connection', true, details: 'initialized with PKCE');
+  } catch (e) {
+    logger.error('App', 'Supabase init failed', e);
+  }
 
-  // Initialize notifications
-  await NotificationService().init();
+  // Уведомления
+  try {
+    await NotificationService().init();
+    logger.test('Notifications', true, details: 'service initialized');
+    await NotificationService().scheduleActivityReminders();
+    logger.info('App', 'Activity reminders scheduled');
+  } catch (e) {
+    logger.error('App', 'Notification init failed (non-critical)', e);
+  }
 
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -211,6 +230,18 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Слушаем событие PASSWORD_RECOVERY от Supabase
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      logger.info('Auth', 'Auth event: ${data.event}');
+      if (data.event == AuthChangeEvent.passwordRecovery && mounted) {
+        logger.action('Auth', 'Password recovery event — opening reset screen');
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+        );
+      }
+    });
+
     _checkAuth();
   }
 

@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+.dart_tool/
+.packages
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Android/iOS build
+android/.gradle/
+ios/Pods/
+ios/.symlinks/
+
+# Git
+.git/
+.gitignore

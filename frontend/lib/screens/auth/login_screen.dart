@@ -6,6 +6,9 @@ import '../../services/supabase_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../home/main_screen.dart';
 import 'register_screen.dart';
+import 'forgot_password_screen.dart';
+import 'reset_password_screen.dart';
+import 'dart:async';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +24,20 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    // Слушаем PASSWORD_RECOVERY — если пользователь перешёл по ссылке сброса
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.passwordRecovery && mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+        );
+      }
+    });
+  }
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -45,9 +62,24 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        String message = e.toString().replaceAll('Exception: ', '');
-        if (e is AuthException && e.code == 'invalid_credentials') {
-          message = '$message\n(Check your email / Проверьте почту)';
+        final loc = AppLocalizations.of(context);
+        String message;
+        if (e is AuthException) {
+          switch (e.statusCode?.toString()) {
+            case '400':
+              message = loc.translate('error_invalid_credentials');
+              break;
+            case '422':
+              message = loc.translate('error_email_not_confirmed');
+              break;
+            case '429':
+              message = loc.translate('error_too_many_requests');
+              break;
+            default:
+              message = loc.translate('error_login_failed');
+          }
+        } else {
+          message = loc.translate('error_network');
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -181,7 +213,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           : Text(loc.login, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+
+                  // Забыли пароль?
+                  Align(
+                    alignment: Alignment.center,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                      ),
+                      child: Text(
+                        loc.translate('forgot_password'),
+                        style: TextStyle(color: hintColor, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
 
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -206,6 +253,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();

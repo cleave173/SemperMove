@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Сервис для автоматического подсчёта шагов через нативные сенсоры телефона.
-///
-/// Использует пакет `pedometer`, который работает через акселерометр.
-/// Хранит начальное значение счётчика при первом запуске за день
-/// в SharedPreferences, чтобы подсчитать шаги именно за сегодня.
 class StepTrackerService {
   static final StepTrackerService _instance = StepTrackerService._internal();
   factory StepTrackerService() => _instance;
@@ -31,22 +28,44 @@ class StepTrackerService {
   bool get isTracking => _isTracking;
   String get pedestrianStatus => _pedestrianStatus;
 
-  /// Начать отслеживание шагов
+  /// Начать отслеживание шагов (с запросом разрешения)
   Future<void> startTracking() async {
     if (_isTracking) return;
 
     try {
+      // Запрашиваем разрешения (обязательно на Android 10+)
+      final activityStatus = await Permission.activityRecognition.request();
+      final sensorsStatus = await Permission.sensors.request();
+
+      if (!activityStatus.isGranted && !sensorsStatus.isGranted) {
+        debugPrint('Pedometer permissions denied (activity: $activityStatus, sensors: $sensorsStatus)');
+        return;
+      }
+
       // Загружаем сохранённые данные за сегодня
       await _loadTodayData();
 
       // Подписка на подсчёт шагов
+      _stepSubscription?.cancel();
       _stepSubscription = Pedometer.stepCountStream.listen(
         _onStepCount,
-        onError: _onStepError,
+        onError: (error) {
+          debugPrint('Step count error: $error — restarting in 5s');
+          // Перезапускаем подписку через 5 секунд
+          Future.delayed(const Duration(seconds: 5), () {
+            _stepSubscription?.cancel();
+            _stepSubscription = Pedometer.stepCountStream.listen(
+              _onStepCount,
+              onError: _onStepError,
+              cancelOnError: false,
+            );
+          });
+        },
         cancelOnError: false,
       );
 
       // Подписка на статус (ходьба/стоит)
+      _statusSubscription?.cancel();
       _statusSubscription = Pedometer.pedestrianStatusStream.listen(
         _onPedestrianStatus,
         onError: (e) => debugPrint('Pedestrian status error: $e'),
@@ -54,6 +73,7 @@ class StepTrackerService {
       );
 
       _isTracking = true;
+      debugPrint('Step tracking started successfully');
     } catch (e) {
       debugPrint('Step tracking error: $e');
     }
